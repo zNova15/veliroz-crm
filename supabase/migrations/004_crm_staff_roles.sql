@@ -182,11 +182,11 @@ returns boolean language sql stable security definer set search_path = public, p
   );
 $$;
 
-create or replace function public.is_creador()     returns boolean language sql stable as $$ select public.is_staff(array['creador']) $$;
-create or replace function public.is_admin_up()    returns boolean language sql stable as $$ select public.is_staff(array['creador','admin']) $$;
-create or replace function public.is_op_up()       returns boolean language sql stable as $$ select public.is_staff(array['creador','admin','operador']) $$;
-create or replace function public.is_repartidor()  returns boolean language sql stable as $$ select public.is_staff(array['repartidor']) $$;
-create or replace function public.is_staff_any()   returns boolean language sql stable as $$ select public.is_staff(array['creador','admin','operador','repartidor','lector']) $$;
+create or replace function public.is_creador()     returns boolean language sql stable as $$ select public.is_staff(array['creador']::text[]) $$;
+create or replace function public.is_admin_up()    returns boolean language sql stable as $$ select public.is_staff(array['creador','admin']::text[]) $$;
+create or replace function public.is_op_up()       returns boolean language sql stable as $$ select public.is_staff(array['creador','admin','operador']::text[]) $$;
+create or replace function public.is_repartidor()  returns boolean language sql stable as $$ select public.is_staff(array['repartidor']::text[]) $$;
+create or replace function public.is_staff_any()   returns boolean language sql stable as $$ select public.is_staff(array['creador','admin','operador','repartidor','lector']::text[]) $$;
 
 -- Compat: is_admin() ahora = creador OR admin (queda backwards-compatible con el /admin/ actual)
 create or replace function public.is_admin()
@@ -604,7 +604,7 @@ create policy ped_admin_all on public.pedidos for all
 
 drop policy if exists ped_operador_all   on public.pedidos;
 create policy ped_operador_all on public.pedidos for all
-  using (public.is_staff(array['operador'])) with check (public.is_staff(array['operador']));
+  using (public.is_staff(array['operador']::text[])) with check (public.is_staff(array['operador']::text[]));
 
 drop policy if exists ped_repartidor_r   on public.pedidos;
 create policy ped_repartidor_r on public.pedidos for select
@@ -616,7 +616,7 @@ create policy ped_repartidor_u on public.pedidos for update
   with check (public.is_repartidor() and repartidor_email = public.jwt_email());
 
 drop policy if exists ped_lector_r       on public.pedidos;
-create policy ped_lector_r on public.pedidos for select using (public.is_staff(array['lector']));
+create policy ped_lector_r on public.pedidos for select using (public.is_staff(array['lector']::text[]));
 
 -- LINEAS_PEDIDO
 drop policy if exists lin_admin_all on public.lineas_pedido;
@@ -625,7 +625,7 @@ create policy lin_admin_all on public.lineas_pedido for all
 
 drop policy if exists lin_op_all    on public.lineas_pedido;
 create policy lin_op_all on public.lineas_pedido for all
-  using (public.is_staff(array['operador'])) with check (public.is_staff(array['operador']));
+  using (public.is_staff(array['operador']::text[])) with check (public.is_staff(array['operador']::text[]));
 
 drop policy if exists lin_rep_r     on public.lineas_pedido;
 create policy lin_rep_r on public.lineas_pedido for select
@@ -633,7 +633,7 @@ create policy lin_rep_r on public.lineas_pedido for select
                   and p.repartidor_email = public.jwt_email() and public.is_repartidor()));
 
 drop policy if exists lin_lec_r     on public.lineas_pedido;
-create policy lin_lec_r on public.lineas_pedido for select using (public.is_staff(array['lector']));
+create policy lin_lec_r on public.lineas_pedido for select using (public.is_staff(array['lector']::text[]));
 
 -- CLIENTES
 drop policy if exists cli_admin_all on public.clientes;
@@ -641,10 +641,10 @@ create policy cli_admin_all on public.clientes for all
   using (public.is_admin_up()) with check (public.is_admin_up());
 
 drop policy if exists cli_op_read   on public.clientes;
-create policy cli_op_read on public.clientes for select using (public.is_staff(array['operador']));
+create policy cli_op_read on public.clientes for select using (public.is_staff(array['operador']::text[]));
 
 drop policy if exists cli_lec_read  on public.clientes;
-create policy cli_lec_read on public.clientes for select using (public.is_staff(array['lector']));
+create policy cli_lec_read on public.clientes for select using (public.is_staff(array['lector']::text[]));
 
 -- CATALOGO: read pública sigue (para el sitio público), edición solo admin_up
 drop policy if exists cat_admin_all on public.catalogo;
@@ -657,7 +657,7 @@ create policy ev_admin_all on public.eventos_carrito for all
   using (public.is_admin_up()) with check (public.is_admin_up());
 
 drop policy if exists ev_op_read on public.eventos_carrito;
-create policy ev_op_read on public.eventos_carrito for select using (public.is_staff(array['operador']));
+create policy ev_op_read on public.eventos_carrito for select using (public.is_staff(array['operador']::text[]));
 
 -- CUPONES
 drop policy if exists cupones_admin_all on public.cupones;
