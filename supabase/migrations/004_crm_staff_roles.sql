@@ -168,7 +168,7 @@ returns citext language sql stable set search_path = public, pg_catalog as $$
   select case
     when coalesce((auth.jwt() ->> 'email_verified')::boolean, false) = true
       then (auth.jwt() ->> 'email')::citext
-    else null
+    else null::citext
   end;
 $$;
 
