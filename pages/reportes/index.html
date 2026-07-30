@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Reportes · Veliroz CRM</title><meta name="robots" content="noindex, nofollow"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"/>
+<link rel="stylesheet" href="/css/main.css"/></head><body>
+<div class="app"></div>
+<template id="pageTemplate">
+  <div class="page">
+    <h2>Reportes</h2><p class="lead">Ingresos por día + top productos</p>
+    <div class="tab-strip">
+      <button class="tab-btn active" data-rng="7d">7 días</button>
+      <button class="tab-btn" data-rng="30d">30 días</button>
+      <button class="tab-btn" data-rng="90d">90 días</button>
+    </div>
+    <div class="card mb-4"><div class="card-header"><h3>Ingresos por día</h3></div><div id="revenue"><div class="text-muted text-small">Cargando…</div></div></div>
+    <div class="card"><div class="card-header"><h3>Ventas por línea</h3></div><div id="porLinea"><div class="text-muted text-small">Cargando…</div></div></div>
+    <div class="mt-4"><button class="btn secondary" id="btnCsv"><span class="material-symbols-outlined">download</span>Exportar CSV</button></div>
+  </div>
+</template>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="/js/config.js"></script><script src="/js/sb.js"></script><script src="/js/ui.js"></script>
+<script src="/js/auth.js"></script><script src="/js/router.js"></script>
+<script>
+window.shell.render({
+  active:'reportes', title:'Reportes', roles:['creador','admin','lector'],
+  onReady: async who => {
+    let rng = '7d';
+    function daysAgo(n) { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate()-n); return d.toISOString(); }
+    async function load() {
+      const rev = document.getElementById('revenue');
+      const lin = document.getElementById('porLinea');
+      rev.innerHTML = lin.innerHTML = '<div class="text-muted text-small">Cargando…</div>';
+      const days = rng === '7d' ? 7 : (rng === '30d' ? 30 : 90);
+      try {
+        const rows = await window.sb.get(`v_revenue_diario?select=dia,linea_negocio,n_pedidos,total_bruto,ganancia_total&dia=gte.${daysAgo(days)}&order=dia.desc`);
+        // Group by dia
+        const porDia = {};
+        rows.forEach(r => {
+          const d = r.dia.substring(0,10);
+          if (!porDia[d]) porDia[d] = { total: 0, n: 0 };
+          porDia[d].total += Number(r.total_bruto || 0);
+          porDia[d].n += Number(r.n_pedidos || 0);
+        });
+        const max = Math.max(...Object.values(porDia).map(v => v.total), 1);
+        rev.innerHTML = Object.entries(porDia).sort().map(([d,v]) => `
+          <div class="flex items-center gap-3" style="padding:6px 0;">
+            <div style="width:80px;font-size:12px;">${d.substring(5)}</div>
+            <div style="flex:1;background:var(--paper);border-radius:6px;overflow:hidden;height:20px;position:relative;">
+              <div style="width:${(v.total/max*100).toFixed(0)}%;background:linear-gradient(90deg,var(--rose),var(--rose-2));height:100%;"></div>
+            </div>
+            <div style="width:100px;text-align:right;font-size:12px;font-weight:600;">${window.ui.fmtSoles(v.total)}</div>
+            <div style="width:60px;text-align:right;font-size:11px;color:var(--muted);">${v.n} ped.</div>
+          </div>`).join('');
+        // Por línea
+        const porLinea = {};
+        rows.forEach(r => { porLinea[r.linea_negocio] = (porLinea[r.linea_negocio] || 0) + Number(r.total_bruto || 0); });
+        lin.innerHTML = Object.entries(porLinea).map(([lg,tot]) => `
+          <div class="flex items-center gap-3" style="padding:8px 0;border-bottom:1px solid var(--border-2);">
+            <div style="width:100px;font-size:13px;font-weight:600;">${window.ui.esc(lg)}</div>
+            <div style="flex:1;"></div>
+            <div style="font-size:14px;font-weight:600;color:var(--rose);">${window.ui.fmtSoles(tot)}</div>
+          </div>`).join('');
+      } catch (e) { rev.innerHTML = '<div style="color:var(--danger);">Error: ' + window.ui.esc(e.message) + '</div>'; }
+    }
+    document.getElementById('btnCsv').addEventListener('click', async () => {
+      try {
+        const rows = await window.sb.get('pedidos?select=pedido_codigo,cliente_email,cliente_nombre,fecha_pedido,linea_negocio,metodo_pago,total,estado&order=fecha_pedido.desc&limit=1000');
+        const csv = 'codigo,email,nombre,fecha,linea,pago,total,estado\n' +
+          rows.map(r => [r.pedido_codigo, r.cliente_email, (r.cliente_nombre||'').replace(/,/g,' '), r.fecha_pedido, r.linea_negocio, r.metodo_pago, r.total, r.estado].join(',')).join('\n');
+        const blob = new Blob([csv], { type:'text/csv' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pedidos_veliroz.csv'; a.click();
+      } catch (e) { window.ui.toast('Error: ' + e.message, 'danger'); }
+    });
+    document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active')); b.classList.add('active'); rng = b.dataset.rng; load();
+    }));
+    load();
+  }
+});
+</script></body></html>

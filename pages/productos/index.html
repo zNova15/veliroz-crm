@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Productos · Veliroz CRM</title><meta name="robots" content="noindex, nofollow"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"/>
+<link rel="stylesheet" href="/css/main.css"/></head><body>
+<div class="app"></div>
+<template id="pageTemplate">
+  <div class="page">
+    <div class="flex items-center justify-between mb-4">
+      <div><h2>Productos</h2><p class="lead">Catálogo — fuente de verdad de precios</p></div>
+      <div class="flex gap-2"><input type="search" id="q" placeholder="Buscar…" style="width:220px"/></div>
+    </div>
+    <div class="card" style="background:#fef3c7;border:1px solid #fcd34d;padding:12px 16px;margin-bottom:16px;">
+      <div class="text-small"><strong>⚠ Cache Cloudflare:</strong> los cambios se ven en veliroz.com en ~4h. Para forzar, purgá el cache manualmente en Cloudflare Dashboard.</div>
+    </div>
+    <div class="card" style="padding:0;">
+      <div style="overflow-x:auto;max-height:70vh;overflow-y:auto;">
+        <table class="data"><thead><tr><th>ID</th><th>Nombre</th><th>Categoría</th><th class="num">Precio</th><th>Activo</th><th></th></tr></thead>
+          <tbody id="tblProd"><tr><td colspan="6" class="text-muted text-small" style="text-align:center;padding:30px;">Cargando…</td></tr></tbody>
+        </table></div>
+    </div>
+  </div>
+</template>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="/js/config.js"></script><script src="/js/sb.js"></script><script src="/js/ui.js"></script>
+<script src="/js/auth.js"></script><script src="/js/router.js"></script>
+<script>
+window.shell.render({
+  active:'productos', title:'Productos',
+  onReady: async who => {
+    const canEdit = ['creador','admin'].includes(who.rol);
+    const canEditStock = canEdit || who.rol === 'operador';
+    let q = '';
+    async function load() {
+      const tb = document.getElementById('tblProd');
+      tb.innerHTML = '<tr><td colspan="6" class="text-muted text-small" style="text-align:center;padding:30px;">Cargando…</td></tr>';
+      let filter = 'select=*&order=categoria,nombre';
+      if (q) filter += `&or=(nombre.ilike.*${encodeURIComponent(q)}*,producto_id.ilike.*${encodeURIComponent(q)}*)`;
+      try {
+        const rows = await window.sb.get('catalogo?' + filter);
+        tb.innerHTML = rows.map(p => `
+          <tr>
+            <td class="mono">${window.ui.esc(p.producto_id)}</td>
+            <td><strong>${window.ui.esc(p.nombre)}</strong></td>
+            <td class="text-small">${window.ui.esc(p.categoria || '—')}</td>
+            <td class="num">${canEdit ? `<input type="number" step="0.01" value="${p.precio}" style="width:80px;text-align:right;" onchange="editar('${p.producto_id}','precio',this.value)"/>` : window.ui.fmtSoles(p.precio)}</td>
+            <td>${canEdit ? `<input type="checkbox" ${p.activo?'checked':''} onchange="editar('${p.producto_id}','activo',this.checked)"/>` : (p.activo ? '✓' : '—')}</td>
+            <td>${canEdit ? '' : ''}</td>
+          </tr>`).join('');
+      } catch (e) { tb.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--danger);">Error: ' + window.ui.esc(e.message) + '</td></tr>'; }
+    }
+    window.editar = async (id, campo, valor) => {
+      try {
+        const body = {}; body[campo] = campo === 'precio' ? parseFloat(valor) : valor;
+        await window.sb.patch('catalogo?producto_id=eq.' + encodeURIComponent(id), body);
+        window.ui.toast('Guardado ✓', 'success');
+      } catch (e) { window.ui.toast('Error: ' + e.message, 'danger'); load(); }
+    };
+    document.getElementById('q').addEventListener('input', window.ui.debounce(e => { q = e.target.value.trim(); load(); }, 400));
+    load();
+  }
+});
+</script></body></html>

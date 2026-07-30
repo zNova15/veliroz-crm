@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Dashboard · Veliroz CRM</title>
+<meta name="robots" content="noindex, nofollow"/>
+<link rel="icon" href="/assets/favicon.png" type="image/png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"/>
+<link rel="stylesheet" href="/css/main.css"/>
+</head>
+<body>
+<div class="app"></div>
+
+<template id="pageTemplate">
+  <div class="page">
+    <h2>Dashboard</h2>
+    <p class="lead">Resumen operacional del día</p>
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="label">Pedidos hoy</div><div class="value" id="k_pedidos">—</div><div class="sub" id="k_pedidos_sub">—</div></div>
+      <div class="kpi-card success"><div class="label">Ingresos hoy</div><div class="value" id="k_ing">—</div><div class="sub" id="k_ing_sub">—</div></div>
+      <div class="kpi-card warn"><div class="label">Pagos pendientes</div><div class="value" id="k_pag">—</div><div class="sub">requieren voucher</div></div>
+      <div class="kpi-card"><div class="label">Entregas Cajamarca</div><div class="value" id="k_ent">—</div><div class="sub">agendadas</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;">
+      <div class="card">
+        <div class="card-header"><h3>Últimos pedidos</h3><a href="/pages/pedidos/" class="btn secondary sm">Ver todos →</a></div>
+        <div style="overflow-x:auto;">
+          <table class="data">
+            <thead><tr><th>Código</th><th>Cliente</th><th>Línea</th><th>Pago</th><th class="num">Total</th><th>Estado</th></tr></thead>
+            <tbody id="tblRecientes"><tr><td colspan="6" class="text-muted text-small" style="text-align:center;padding:20px;">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-header"><h3>Top productos (30d)</h3></div>
+        <div id="topProds"><p class="text-muted text-small">Cargando…</p></div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="/js/config.js"></script>
+<script src="/js/sb.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/router.js"></script>
+<script>
+window.shell.render({
+  active:'dashboard', title:'Dashboard',
+  onReady: async who => {
+    if (who.rol === 'repartidor') { location.href = '/pages/reparto/'; return; }
+    try {
+      const [kpisArr, recientes, top, pending, entregas] = await Promise.all([
+        window.sb.get('v_kpis_hoy?select=*'),
+        window.sb.get('pedidos?select=pedido_codigo,cliente_nombre,linea_negocio,metodo_pago,total,estado,fecha_pedido&order=fecha_pedido.desc&limit=10'),
+        window.sb.get('v_top_productos?select=producto_id,nombre,unidades,revenue&order=unidades.desc&limit=8'),
+        window.sb.get('pedidos?select=id&estado=eq.nuevo&metodo_pago=in.(yape,plin,banco)'),
+        window.sb.get('v_repartos_dia?select=id')
+      ]);
+      const k = (kpisArr && kpisArr[0]) || {};
+      const showMoney = ['creador','admin'].includes(who.rol);
+      document.getElementById('k_pedidos').textContent = k.pedidos_hoy ?? 0;
+      document.getElementById('k_pedidos_sub').textContent = (k.pedidos_nuevos ?? 0) + ' nuevos · ' + (k.pedidos_activos ?? 0) + ' activos';
+      document.getElementById('k_ing').textContent = window.ui.fmtSoles(k.ingresos_hoy);
+      document.getElementById('k_ing_sub').textContent = showMoney && k.ganancia_hoy != null ? 'ganancia ' + window.ui.fmtSoles(k.ganancia_hoy) : (k.entregados ?? 0) + ' entregados';
+      document.getElementById('k_pag').textContent = (pending || []).length;
+      document.getElementById('k_ent').textContent = (entregas || []).length;
+
+      const tb = document.getElementById('tblRecientes');
+      tb.innerHTML = !recientes.length ?
+        '<tr><td colspan="6" class="text-muted text-small" style="text-align:center;padding:20px;">Sin pedidos aún.</td></tr>' :
+        recientes.map(p => `
+          <tr onclick="location.href='/pages/pedidos/?q=${encodeURIComponent(p.pedido_codigo)}'">
+            <td class="mono">${window.ui.esc(p.pedido_codigo)}</td>
+            <td>${window.ui.esc(p.cliente_nombre || '—')}<div class="muted-cell">${window.ui.fmtDate(p.fecha_pedido)}</div></td>
+            <td class="text-small">${window.ui.esc(p.linea_negocio)}</td>
+            <td class="text-small">${window.ui.esc(p.metodo_pago)}</td>
+            <td class="num">${window.ui.fmtSoles(p.total)}</td>
+            <td>${window.ui.badgeEstado(p.estado)}</td>
+          </tr>`).join('');
+
+      const tp = document.getElementById('topProds');
+      tp.innerHTML = (!top || !top.length) ? '<p class="text-muted text-small">Sin ventas.</p>' :
+        top.map((p,i) => `
+          <div class="flex items-center gap-3" style="padding:8px 0;border-bottom:1px solid var(--border-2);">
+            <span style="width:24px;height:24px;background:rgba(137,86,95,.1);color:var(--rose);border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;">${i+1}</span>
+            <div class="flex-1"><div class="text-small" style="font-weight:600;">${window.ui.esc(p.nombre)}</div><div class="text-small text-muted">${p.unidades} un.</div></div>
+            <div class="text-small" style="font-weight:600;">${window.ui.fmtSoles(p.revenue)}</div>
+          </div>`).join('');
+    } catch (e) {
+      console.error(e); window.ui.toast('Error dashboard: ' + e.message, 'danger');
+    }
+  }
+});
+</script>
+</body>
+</html>

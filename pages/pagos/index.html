@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Pagos · Veliroz CRM</title><meta name="robots" content="noindex, nofollow"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"/>
+<link rel="stylesheet" href="/css/main.css"/></head>
+<body>
+<div class="app"></div>
+<template id="pageTemplate">
+  <div class="page">
+    <h2>Pagos</h2><p class="lead">Confirmá vouchers Yape/Plin/Banco</p>
+    <div class="tab-strip">
+      <button class="tab-btn active" data-metodo="all">Todos pendientes</button>
+      <button class="tab-btn" data-metodo="yape">Yape</button>
+      <button class="tab-btn" data-metodo="plin">Plin</button>
+      <button class="tab-btn" data-metodo="banco">Banco</button>
+      <button class="tab-btn" data-metodo="contra_entrega">Contra-entrega</button>
+    </div>
+    <div id="listaPagos"><div class="text-muted text-small">Cargando…</div></div>
+  </div>
+</template>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="/js/config.js"></script><script src="/js/sb.js"></script><script src="/js/ui.js"></script>
+<script src="/js/auth.js"></script><script src="/js/router.js"></script>
+<script>
+window.shell.render({
+  active:'pagos', title:'Pagos', roles:['creador','admin','operador'],
+  onReady: async who => {
+    let metodo = 'all';
+    async function load() {
+      const list = document.getElementById('listaPagos');
+      list.innerHTML = '<div class="text-muted text-small">Cargando…</div>';
+      let filter = 'select=id,pedido_codigo,cliente_nombre,cliente_telefono,cliente_email,metodo_pago,total,fecha_pedido,notas_internas&estado=eq.nuevo&order=fecha_pedido.desc';
+      if (metodo === 'all') filter += '&metodo_pago=in.(yape,plin,banco,contra_entrega)';
+      else filter += '&metodo_pago=eq.' + metodo;
+      try {
+        const rows = await window.sb.get('pedidos?' + filter);
+        if (!rows.length) { list.innerHTML = '<div class="card text-muted text-small" style="text-align:center;padding:30px;">Sin pagos pendientes 🎉</div>'; return; }
+        list.innerHTML = rows.map(r => {
+          const min = Math.floor((Date.now() - new Date(r.fecha_pedido).getTime()) / 60000);
+          const urgente = min > 120 ? 'style="border-left:4px solid var(--danger);"' : '';
+          return `
+          <div class="card mb-3" ${urgente}>
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="text-small text-muted">${window.ui.badgeEstado('nuevo')} · ${window.ui.esc(r.metodo_pago)}</div>
+                <h3 style="margin:4px 0;font-family:'Noto Serif',serif;">${window.ui.esc(r.cliente_nombre || '—')} · <span class="text-mono" style="color:var(--rose);">${window.ui.esc(r.pedido_codigo)}</span></h3>
+                <div class="text-small text-muted">${window.ui.esc(r.cliente_email || '')} · ${window.ui.esc(r.cliente_telefono || '')}</div>
+                <div class="text-small mt-2"><strong style="font-size:16px;color:var(--rose);">${window.ui.fmtSoles(r.total)}</strong> · hace ${min<60?min+' min':(Math.floor(min/60)+' h ' + (min%60) + ' min')}</div>
+              </div>
+              <div class="flex gap-2">
+                <input type="file" id="v_${r.id}" accept="image/*,application/pdf" style="display:none;"/>
+                <button class="btn secondary" onclick="document.getElementById('v_${r.id}').click()"><span class="material-symbols-outlined">upload</span>Voucher</button>
+                <button class="btn success" onclick="confirmar('${r.id}', '${window.ui.esc(r.metodo_pago)}')"><span class="material-symbols-outlined">check</span>Confirmar</button>
+                <a class="btn ghost" href="${window.ui.whatsappUrl(r.cliente_telefono, 'Hola! Recordatorio: falta el voucher del pedido ' + r.pedido_codigo + ' (S/. ' + r.total.toFixed(2) + ')')}" target="_blank"><span class="material-symbols-outlined">chat</span></a>
+              </div>
+            </div>
+          </div>`;
+        }).join('');
+        // Cachear archivo por id de pedido
+        rows.forEach(r => {
+          const inp = document.getElementById('v_' + r.id);
+          if (inp) inp.addEventListener('change', e => { window._voucherFile = window._voucherFile || {}; window._voucherFile[r.id] = e.target.files[0]; window.ui.toast('Voucher listo para ' + r.pedido_codigo); });
+        });
+      } catch (e) { list.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--danger);">Error: ' + window.ui.esc(e.message) + '</div>'; }
+    }
+    window.confirmar = async (pid, met) => {
+      let path = null;
+      const f = (window._voucherFile || {})[pid];
+      if ((met === 'yape' || met === 'plin' || met === 'banco') && !f) { window.ui.toast('Subí el voucher primero', 'danger'); return; }
+      if (f) {
+        path = 'pagos/' + pid + '/' + Date.now() + '-' + f.name.replace(/[^a-zA-Z0-9.-]/g,'_');
+        try { await window.sb.upload(window.VELIROZ_CRM.bucket, path, f); }
+        catch (e) { window.ui.toast('Error subiendo voucher: ' + e.message, 'danger'); return; }
+      }
+      try { await window.sb.rpc('confirmar_pago', { p_pedido_id: pid, p_metodo: met, p_evidencia_path: path }); window.ui.toast('Pago confirmado', 'success'); load(); }
+      catch (e) { window.ui.toast('Error: ' + e.message, 'danger'); }
+    };
+    document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
+      b.classList.add('active'); metodo = b.dataset.metodo; load();
+    }));
+    load();
+  }
+});
+</script>
+</body>
+</html>

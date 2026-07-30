@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Clientes · Veliroz CRM</title><meta name="robots" content="noindex, nofollow"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"/>
+<link rel="stylesheet" href="/css/main.css"/></head><body>
+<div class="app"></div>
+<template id="pageTemplate">
+  <div class="page">
+    <div class="flex items-center justify-between mb-4"><div><h2>Clientes</h2><p class="lead">Directorio + LTV</p></div>
+      <input type="search" id="q" placeholder="Nombre, email, teléfono, DNI…" style="width:280px"/></div>
+    <div class="card" style="padding:0;">
+      <div style="overflow-x:auto;max-height:75vh;overflow-y:auto;">
+        <table class="data"><thead><tr><th>Cliente</th><th>Email</th><th>Teléfono</th><th class="num">Pedidos</th><th class="num">Total gastado</th><th>Última compra</th><th></th></tr></thead>
+          <tbody id="tblCli"><tr><td colspan="7" class="text-muted text-small" style="text-align:center;padding:30px;">Cargando…</td></tr></tbody>
+        </table></div></div>
+  </div>
+</template>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="/js/config.js"></script><script src="/js/sb.js"></script><script src="/js/ui.js"></script>
+<script src="/js/auth.js"></script><script src="/js/router.js"></script>
+<script>
+window.shell.render({
+  active:'clientes', title:'Clientes',
+  onReady: async who => {
+    const showMoney = ['creador','admin'].includes(who.rol);
+    let q = '';
+    async function load() {
+      const tb = document.getElementById('tblCli');
+      tb.innerHTML = '<tr><td colspan="7" class="text-muted text-small" style="text-align:center;padding:30px;">Cargando…</td></tr>';
+      let filter = 'select=*&order=ultima_compra_at.desc.nullslast&limit=300';
+      if (q) filter += `&or=(nombre.ilike.*${encodeURIComponent(q)}*,email.ilike.*${encodeURIComponent(q)}*,telefono.ilike.*${encodeURIComponent(q)}*,dni.ilike.*${encodeURIComponent(q)}*)`;
+      try {
+        const rows = await window.sb.get('clientes?' + filter);
+        if (!rows.length) { tb.innerHTML = '<tr><td colspan="7" class="text-muted text-small" style="text-align:center;padding:30px;">Sin resultados.</td></tr>'; return; }
+        tb.innerHTML = rows.map(c => `
+          <tr>
+            <td><strong>${window.ui.esc(c.nombre || '—')}</strong>${c.es_invitado ? ' <span class="text-small text-muted">(guest)</span>' : ''}</td>
+            <td class="text-small">${window.ui.esc(c.email)}</td>
+            <td class="text-small">${window.ui.esc(c.telefono || '—')}</td>
+            <td class="num">${c.n_pedidos ?? 0}</td>
+            <td class="num">${showMoney ? window.ui.fmtSoles(c.total_gastado) : '—'}</td>
+            <td class="text-small text-muted">${window.ui.fmtDate(c.ultima_compra_at) || 'Nunca'}</td>
+            <td><a class="btn ghost sm" href="${window.ui.whatsappUrl(c.telefono, 'Hola ' + (c.nombre || '') + '! Te escribo de Veliroz 🌸')}" target="_blank"><span class="material-symbols-outlined">chat</span></a></td>
+          </tr>`).join('');
+      } catch (e) { tb.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:var(--danger);">Error: ' + window.ui.esc(e.message) + '</td></tr>'; }
+    }
+    document.getElementById('q').addEventListener('input', window.ui.debounce(e => { q = e.target.value.trim(); load(); }, 400));
+    load();
+  }
+});
+</script></body></html>

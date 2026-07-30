@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Equipo · Veliroz CRM</title>
+<meta name="robots" content="noindex, nofollow"/>
+<link rel="icon" href="/assets/favicon.png" type="image/png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"/>
+<link rel="stylesheet" href="/css/main.css"/>
+</head>
+<body>
+<div class="app"></div>
+
+<template id="pageTemplate">
+  <div class="page">
+    <div class="flex items-center justify-between mb-4">
+      <div><h2>Equipo</h2><p class="lead">Miembros del equipo con acceso al CRM</p></div>
+      <button class="btn" id="btnInvitar"><span class="material-symbols-outlined">person_add</span>Invitar</button>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header"><h3>Staff activo</h3></div>
+      <div style="overflow-x:auto;">
+        <table class="data">
+          <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Ingresó</th><th>Acciones</th></tr></thead>
+          <tbody id="tblStaff"><tr><td colspan="5" class="text-muted text-small" style="text-align:center;padding:20px;">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><h3>Invitaciones pendientes</h3></div>
+      <div id="listaInv"><p class="text-muted text-small">Cargando…</p></div>
+    </div>
+  </div>
+
+  <!-- Modal invitar -->
+  <div class="modal-back hidden" id="invitarModal">
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-header"><h3>Invitar al equipo</h3><button class="icon-btn" onclick="window.ui.closeModal('invitarModal')"><span class="material-symbols-outlined">close</span></button></div>
+      <div class="form-grid">
+        <label class="full">Email <input type="email" id="invEmail" placeholder="persona@email.com"/></label>
+        <label class="full">Nombre <input type="text" id="invNombre" placeholder="Nombre y apellido"/></label>
+        <label>Rol
+          <select id="invRol">
+            <option value="operador">Operador</option>
+            <option value="repartidor">Repartidor</option>
+            <option value="lector">Lector</option>
+            <option value="admin">Administrador</option>
+          </select>
+        </label>
+        <label>Teléfono (opc) <input type="tel" id="invTel" placeholder="987654321"/></label>
+      </div>
+      <button class="btn mt-4" id="btnEnviarInv" style="width:100%;">Generar link de invitación</button>
+      <div id="invResult" class="mt-4 hidden">
+        <div class="card" style="background:#f0f7e6;border:1px solid var(--success);">
+          <p class="text-small mb-2"><strong>✓ Invitación creada.</strong> Compartila por WhatsApp:</p>
+          <div style="background:#fff;padding:10px;border-radius:8px;font-family:ui-monospace,'SF Mono',monospace;font-size:11px;word-break:break-all;" id="invLink">—</div>
+          <a class="btn mt-2" id="btnWaInv" target="_blank" style="width:100%;justify-content:center;"><span class="material-symbols-outlined">chat</span>Enviar por WhatsApp</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="/js/config.js"></script>
+<script src="/js/sb.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/auth.js"></script>
+<script src="/js/router.js"></script>
+<script>
+window.shell.render({
+  active:'usuarios', title:'Equipo', roles:['creador','admin'],
+  onReady: async who => {
+    window.ui.bindModalClose('invitarModal');
+    // Owner es invisible para otros admins (excepto para sí mismo)
+    async function load() {
+      const canSeeOwner = who.es_owner === true;
+      try {
+        const [staff, inv] = await Promise.all([
+          window.sb.get('staff?select=*&order=rol,nombre'),
+          window.sb.get('staff_invitaciones?select=token,email,nombre,rol,invitado_por,invitado_at,vence_at,usado_at,activo&activo=eq.true&usado_at=is.null&order=invitado_at.desc')
+        ]);
+        const staffFiltrado = canSeeOwner ? staff : staff.filter(s => !s.es_owner);
+        const tb = document.getElementById('tblStaff');
+        tb.innerHTML = staffFiltrado.map(s => `
+          <tr>
+            <td><strong>${window.ui.esc(s.nombre || '—')}</strong>${s.es_owner ? ' <span class="badge badge-rol-creador" style="margin-left:4px;">Owner</span>' : ''}</td>
+            <td class="text-small">${window.ui.esc(s.email)}</td>
+            <td>${window.ui.badgeRol(s.rol)}</td>
+            <td class="text-small text-muted">${window.ui.fmtDate(s.ultimo_ingreso_at) || 'Nunca'}</td>
+            <td>
+              ${s.activo ? `<span class="text-small text-muted">Activo</span>` : `<span class="text-small" style="color:var(--danger);">Inactivo</span>`}
+              ${(s.email !== who.email && !s.es_owner) ? `<button class="btn ghost sm" onclick="desactivar('${window.ui.esc(s.email)}')">Desactivar</button>` : ''}
+            </td>
+          </tr>`).join('');
+        const li = document.getElementById('listaInv');
+        li.innerHTML = !inv.length ? '<p class="text-muted text-small">Sin invitaciones pendientes.</p>' :
+          inv.map(i => `
+            <div class="flex items-center justify-between" style="padding:8px 0;border-bottom:1px solid var(--border-2);">
+              <div><div class="text-small"><strong>${window.ui.esc(i.nombre || i.email)}</strong> · ${window.ui.esc(i.email)}</div><div class="text-small text-muted">${window.ui.badgeRol(i.rol)} · vence ${window.ui.fmtDay(i.vence_at)}</div></div>
+              <div class="flex gap-2">
+                <a class="btn secondary sm" href="/?invite=${i.token}" target="_blank">Copiar link</a>
+                <a class="btn sm" href="${window.ui.whatsappUrl('', 'Hola! Te invito al CRM de Veliroz. Ingresá acá: https://crm.veliroz.com/?invite=' + i.token)}" target="_blank">WhatsApp</a>
+              </div>
+            </div>`).join('');
+      } catch (e) {
+        document.getElementById('tblStaff').innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--danger);">Error: ' + window.ui.esc(e.message) + '</td></tr>';
+      }
+    }
+    document.getElementById('btnInvitar').addEventListener('click', () => {
+      document.getElementById('invEmail').value = '';
+      document.getElementById('invNombre').value = '';
+      document.getElementById('invTel').value = '';
+      document.getElementById('invRol').value = 'operador';
+      document.getElementById('invResult').classList.add('hidden');
+      window.ui.openModal('invitarModal');
+    });
+    document.getElementById('btnEnviarInv').addEventListener('click', async () => {
+      const email = document.getElementById('invEmail').value.trim();
+      const nombre = document.getElementById('invNombre').value.trim();
+      const rol = document.getElementById('invRol').value;
+      const tel = document.getElementById('invTel').value.trim();
+      if (!email || !nombre) { window.ui.toast('Faltan email o nombre', 'danger'); return; }
+      try {
+        const r = await window.sb.rpc('invitar_staff', { p_email: email, p_nombre: nombre, p_rol: rol, p_telefono: tel || null });
+        const link = r.link;
+        document.getElementById('invLink').textContent = link;
+        document.getElementById('btnWaInv').href = window.ui.whatsappUrl(tel, `Hola ${nombre}! Te invito al CRM de Veliroz como ${rol}. Ingresá acá: ${link}`);
+        document.getElementById('invResult').classList.remove('hidden');
+        window.ui.toast('Invitación creada', 'success');
+        load();
+      } catch (e) { window.ui.toast('Error: ' + e.message, 'danger'); }
+    });
+    window.desactivar = async (email) => {
+      if (!confirm('¿Desactivar acceso de ' + email + '?')) return;
+      try { await window.sb.rpc('desactivar_staff', { p_email: email }); window.ui.toast('Desactivado', 'success'); load(); }
+      catch (e) { window.ui.toast('Error: ' + e.message, 'danger'); }
+    };
+    load();
+  }
+});
+</script>
+</body>
+</html>

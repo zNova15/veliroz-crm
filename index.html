@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Veliroz CRM · Ingresar</title>
+<meta name="robots" content="noindex, nofollow"/>
+<link rel="icon" href="/assets/favicon.png" type="image/png"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"/>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"/>
+<link rel="stylesheet" href="/css/main.css"/>
+</head>
+<body>
+
+<div class="login-wrap">
+  <div class="login-card">
+    <div class="login-logo">
+      <div style="width:60px;height:60px;background:var(--rose);border-radius:14px;display:grid;place-items:center;color:#fff;font-family:'Noto Serif',serif;font-size:28px;font-weight:700;margin:0 auto;">V</div>
+      <h1>Veliroz CRM</h1>
+      <p>Panel interno del equipo</p>
+    </div>
+
+    <div id="loginError" class="login-error hidden"></div>
+    <div id="loadingBox" class="hidden" style="text-align:center;padding:20px;">
+      <div class="spinner"></div>
+      <p class="text-muted text-small" style="margin-top:8px;">Verificando acceso…</p>
+    </div>
+
+    <div id="loginForm">
+      <form class="login-form" id="emailLoginForm">
+        <input type="email" id="email" placeholder="Email" autocomplete="username" required/>
+        <input type="password" id="password" placeholder="Contraseña" autocomplete="current-password" required/>
+        <button type="submit" id="btnLogin">Ingresar</button>
+      </form>
+      <div class="login-sep">o</div>
+      <button class="btn-google" id="btnGoogle" style="width:100%;padding:12px;border-radius:12px;font-family:inherit;font-size:14px;">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A10.98 10.98 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18a10.98 10.98 0 0 0 0 9.86l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        Entrar con Google
+      </button>
+      <p class="login-note">Solo staff invitado por Gabriel. Si no tenés cuenta, pedile una invitación por WhatsApp.</p>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="/js/config.js"></script>
+<script src="/js/sb.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/auth.js"></script>
+<script>
+document.getElementById('emailLoginForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const email = document.getElementById('email').value.trim();
+  const pass  = document.getElementById('password').value;
+  await tryLogin(() => window.velAuth.loginEmail(email, pass));
+});
+document.getElementById('btnGoogle').addEventListener('click', () => tryLogin(() => window.velAuth.loginGoogle()));
+
+async function tryLogin(fn) {
+  showError(null);
+  document.getElementById('loginForm').classList.add('hidden');
+  document.getElementById('loadingBox').classList.remove('hidden');
+  try { await fn(); }
+  catch (e) {
+    showError(mapErr(e));
+    document.getElementById('loginForm').classList.remove('hidden');
+    document.getElementById('loadingBox').classList.add('hidden');
+  }
+}
+function showError(msg) {
+  const el = document.getElementById('loginError');
+  if (!msg) { el.classList.add('hidden'); return; }
+  el.textContent = msg; el.classList.remove('hidden');
+}
+function mapErr(e) {
+  const c = e.code || '';
+  if (c.includes('user-not-found') || c.includes('wrong-password') || c.includes('invalid-credential')) return 'Email o contraseña incorrectos.';
+  if (c.includes('too-many-requests')) return 'Demasiados intentos. Esperá un rato.';
+  if (c.includes('popup-closed-by-user')) return 'Cancelaste el login con Google.';
+  return e.message || 'No pudimos iniciar sesión.';
+}
+
+// Al cambiar auth con whoami válido → redirect por rol
+window.velAuth.on(who => {
+  if (!who) return;
+  const dest = who.rol === 'repartidor' ? '/pages/reparto/' : '/pages/dashboard/';
+  location.href = dest;
+});
+</script>
+</body>
+</html>
