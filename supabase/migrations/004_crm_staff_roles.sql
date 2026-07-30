@@ -319,7 +319,7 @@ begin
   values (v_target, p_nombre, p_rol, p_telefono, v_actor)
   returning token into v_token;
 
-  perform public.log_audit('staff.invitar', 'staff_invitaciones', v_token, null,
+  perform public.log_audit('staff.invitar', 'staff_invitaciones', v_token, null::jsonb,
                            jsonb_build_object('email', v_target, 'rol', p_rol));
 
   return jsonb_build_object('ok', true, 'token', v_token,
@@ -346,7 +346,7 @@ begin
   on conflict (email) do update set rol = excluded.rol, activo = true, updated_at = now();
 
   update public.staff_invitaciones set usado_at = now(), activo = false where token = p_token;
-  perform public.log_audit('staff.acepta', 'staff', v_email::text, null, jsonb_build_object('rol', v_inv.rol));
+  perform public.log_audit('staff.acepta', 'staff', v_email::text, null::jsonb, jsonb_build_object('rol', v_inv.rol));
   return jsonb_build_object('ok', true, 'rol', v_inv.rol);
 end $$;
 grant execute on function public.aceptar_invitacion(text) to authenticated;
@@ -370,7 +370,7 @@ begin
   if v_actor_rol = 'admin' and v_target_rol in ('creador','admin') then raise exception 'admin_no_puede_admin' using errcode='42501'; end if;
 
   update public.staff set activo = false, updated_at = now() where email = v_target;
-  perform public.log_audit('staff.desactivar', 'staff', v_target::text, jsonb_build_object('rol', v_target_rol), null);
+  perform public.log_audit('staff.desactivar', 'staff', v_target::text, jsonb_build_object('rol', v_target_rol), null::jsonb);
   return jsonb_build_object('ok', true);
 end $$;
 grant execute on function public.desactivar_staff(text) to authenticated;
