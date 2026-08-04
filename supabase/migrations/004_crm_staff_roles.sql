@@ -81,17 +81,17 @@ create table if not exists public.configuracion (
 );
 
 insert into public.configuracion (clave, valor, descripcion) values
-  ('modo_prueba',         to_jsonb(false),                'Banner amarillo global si true'),
-  ('envio_gratis_lima',   to_jsonb(80),                    'Umbral gratis Lima (S/.)'),
-  ('envio_gratis_caja',   to_jsonb(40),                    'Umbral gratis Cajamarca (S/.)'),
+  ('modo_prueba',         'false'::jsonb,                'Banner amarillo global si true'),
+  ('envio_gratis_lima',   '80'::jsonb,                    'Umbral gratis Lima (S/.)'),
+  ('envio_gratis_caja',   '40'::jsonb,                    'Umbral gratis Cajamarca (S/.)'),
   ('costo_zonas',         '{"puylucana":0,"banos_inca":3,"cajamarca_ciudad":5}'::jsonb, 'S/. entrega personal'),
   ('yape',                '{"numero":"967456364","nombre":"Gabriel Julca"}'::jsonb, 'Datos Yape'),
   ('plin',                '{"numero":"950211475","nombre":"Gabriel Julca"}'::jsonb, 'Datos Plin'),
   ('banco',               '{"banco":"BCP","titular":"Gabriel Julca","cuenta":"245-00098391-0-10","cci":"002-245-100098391910-99"}'::jsonb, 'Datos banco'),
-  ('wa_saludo',           to_jsonb('Hola {nombre}! Te escribo de Veliroz 🌸'),                                'Plantilla WA saludo'),
-  ('wa_confirmacion',     to_jsonb('Confirmamos tu pedido {codigo} por S/. {total}. Coordinamos entrega hoy!'), 'Plantilla WA confirmación'),
-  ('wa_llegando',         to_jsonb('Hola {nombre}, ya estoy llegando con tu pedido {codigo}!'),               'Plantilla WA repartidor'),
-  ('wa_recordatorio_pago',to_jsonb('Recordatorio: falta el voucher de tu pedido {codigo} (S/. {total})'),     'Plantilla WA recordar voucher')
+  ('wa_saludo',           to_jsonb('Hola {nombre}! Te escribo de Veliroz 🌸'::text),                                'Plantilla WA saludo'),
+  ('wa_confirmacion',     to_jsonb('Confirmamos tu pedido {codigo} por S/. {total}. Coordinamos entrega hoy!'::text), 'Plantilla WA confirmación'),
+  ('wa_llegando',         to_jsonb('Hola {nombre}, ya estoy llegando con tu pedido {codigo}!'::text),               'Plantilla WA repartidor'),
+  ('wa_recordatorio_pago',to_jsonb('Recordatorio: falta el voucher de tu pedido {codigo} (S/. {total})'::text),     'Plantilla WA recordar voucher')
 on conflict (clave) do nothing;
 
 -- ============================================================
