@@ -22,7 +22,7 @@ window.shell = (() => {
     const items = NAV_ITEMS.filter(i => i.roles.includes(rol));
     const sections = {};
     items.forEach(i => { (sections[i.section] = sections[i.section] || []).push(i); });
-    let html = '<div class="sidebar-header"><div class="logo-wrap">V</div><div class="brand">Veliroz<small>CRM · ' + window.VELIROZ_CRM.version + '</small></div></div>';
+    let html = '<div class="sidebar-header"><img src="/assets/logo-veliroz.png" alt="Veliroz" class="sidebar-logo"/><div class="brand">Veliroz<small>CRM · ' + window.VELIROZ_CRM.version + '</small></div></div>';
     html += '<nav class="sidebar-nav">';
     for (const sec in sections) {
       html += `<div class="nav-section">${window.ui.esc(sec)}</div>`;
