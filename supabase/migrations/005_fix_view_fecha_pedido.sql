@@ -1,13 +1,18 @@
 -- ============================================================
--- Fix: agregar fecha_pedido y datos de comprobante a v_repartos_dia
--- + agregar campos de comprobante a v_repartos_dia para mostrar boleta/factura
+-- Fix: v_repartos_dia debe traer fecha_pedido + datos de comprobante.
+-- `create or replace view` rechaza reordenar/renombrar columnas
+-- (Postgres 42P16). Solución: drop + create.
 -- ============================================================
-create or replace view public.v_repartos_dia with (security_invoker = true) as
+drop view if exists public.v_repartos_dia;
+
+create view public.v_repartos_dia with (security_invoker = true) as
 select
   p.id, p.pedido_codigo, p.cliente_nombre, p.cliente_telefono, p.cliente_email,
-  p.direccion, p.zona_local, p.total, p.subtotal, p.costo_envio, p.descuento,
+  p.direccion, p.zona_local,
+  p.subtotal, p.descuento, p.costo_envio, p.total,
   p.metodo_pago, p.repartidor_email,
-  p.estado, p.fecha_pedido, p.fecha_pago, p.fecha_entrega, p.fecha_entrega_acordada,
+  p.estado,
+  p.fecha_pedido, p.fecha_pago, p.fecha_entrega, p.fecha_entrega_acordada,
   p.notas_internas, p.linea_negocio,
   p.tipo_comprobante, p.documento, p.razon_social, p.direccion_fiscal,
   s.nombre as repartidor_nombre
