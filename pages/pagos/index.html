@@ -11,7 +11,7 @@
 <div class="app"></div>
 <template id="pageTemplate">
   <div class="page">
-    <h2>Pagos</h2><p class="lead">Confirmá vouchers Yape/Plin/Banco</p>
+    <h2>Pagos</h2><p class="lead">Confirmá vouchers Yape/Plin/Banco y enviá el comprobante al cliente</p>
     <div class="tab-strip">
       <button class="tab-btn active" data-metodo="all">Todos pendientes</button>
       <button class="tab-btn" data-metodo="yape">Yape</button>
@@ -20,6 +20,28 @@
       <button class="tab-btn" data-metodo="contra_entrega">Contra-entrega</button>
     </div>
     <div id="listaPagos"><div class="text-muted text-small">Cargando…</div></div>
+  </div>
+
+  <!-- Modal comprobante -->
+  <div class="modal-back hidden" id="compModal">
+    <div class="modal" style="max-width:560px;">
+      <div class="modal-header">
+        <div><div class="text-small text-muted" style="text-transform:uppercase;letter-spacing:.08em;font-weight:700;" id="compHeader">Comprobante</div>
+          <h3 id="compTitulo">Enviar al cliente</h3></div>
+        <button class="icon-btn" onclick="window.ui.closeModal('compModal')"><span class="material-symbols-outlined">close</span></button>
+      </div>
+      <div>
+        <label>Mensaje para WhatsApp (editable)</label>
+        <textarea id="compMsg" rows="12" style="width:100%;font-family:inherit;font-size:13px;line-height:1.5;"></textarea>
+        <div class="mt-4 flex gap-2">
+          <a class="btn" id="compBtnWa" target="_blank" style="flex:1;justify-content:center;">
+            <span class="material-symbols-outlined">chat</span> Enviar por WhatsApp
+          </a>
+          <button class="btn ghost" onclick="window.ui.closeModal('compModal')">Después</button>
+        </div>
+        <p class="text-small text-muted mt-3">💡 Cuando emitas la boleta/factura formal en SUNAT, adjuntá el PDF por el mismo chat.</p>
+      </div>
+    </div>
   </div>
 </template>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -31,10 +53,12 @@ window.shell.render({
   active:'pagos', title:'Pagos', roles:['creador','admin','operador'],
   onReady: async who => {
     let metodo = 'all';
+    window.ui.bindModalClose('compModal');
+
     async function load() {
       const list = document.getElementById('listaPagos');
       list.innerHTML = '<div class="text-muted text-small">Cargando…</div>';
-      let filter = 'select=id,pedido_codigo,cliente_nombre,cliente_telefono,cliente_email,metodo_pago,total,fecha_pedido,notas_internas&estado=eq.nuevo&order=fecha_pedido.desc';
+      let filter = 'select=id,pedido_codigo,cliente_nombre,cliente_telefono,cliente_email,metodo_pago,total,subtotal,costo_envio,fecha_pedido,notas_internas,tipo_comprobante,documento,razon_social,direccion_fiscal&estado=eq.nuevo&order=fecha_pedido.desc';
       if (metodo === 'all') filter += '&metodo_pago=in.(yape,plin,banco,contra_entrega)';
       else filter += '&metodo_pago=eq.' + metodo;
       try {
@@ -43,43 +67,106 @@ window.shell.render({
         list.innerHTML = rows.map(r => {
           const min = Math.floor((Date.now() - new Date(r.fecha_pedido).getTime()) / 60000);
           const urgente = min > 120 ? 'style="border-left:4px solid var(--danger);"' : '';
+          const tipoBadge = r.tipo_comprobante === 'factura' ?
+            '<span class="badge" style="background:#dbeafe;color:#1e40af;">📄 Factura</span>' :
+            '<span class="badge" style="background:#f3f4f6;color:#374151;">🧾 Boleta</span>';
           return `
           <div class="card mb-3" ${urgente}>
-            <div class="flex items-center justify-between">
-              <div>
-                <div class="text-small text-muted">${window.ui.badgeEstado('nuevo')} · ${window.ui.esc(r.metodo_pago)}</div>
+            <div class="flex items-center justify-between" style="gap:16px;flex-wrap:wrap;">
+              <div style="flex:1;min-width:0;">
+                <div class="text-small text-muted flex gap-2 items-center">
+                  ${window.ui.badgeEstado('nuevo')} · ${window.ui.esc(r.metodo_pago)} ${tipoBadge}
+                </div>
                 <h3 style="margin:4px 0;font-family:'Noto Serif',serif;">${window.ui.esc(r.cliente_nombre || '—')} · <span class="text-mono" style="color:var(--rose);">${window.ui.esc(r.pedido_codigo)}</span></h3>
                 <div class="text-small text-muted">${window.ui.esc(r.cliente_email || '')} · ${window.ui.esc(r.cliente_telefono || '')}</div>
-                <div class="text-small mt-2"><strong style="font-size:16px;color:var(--rose);">${window.ui.fmtSoles(r.total)}</strong> · hace ${min<60?min+' min':(Math.floor(min/60)+' h ' + (min%60) + ' min')}</div>
+                ${r.tipo_comprobante === 'factura' ? `<div class="text-small text-muted">RUC ${window.ui.esc(r.documento||'—')} · ${window.ui.esc(r.razon_social||'')}</div>` :
+                   (r.documento ? `<div class="text-small text-muted">DNI ${window.ui.esc(r.documento)}</div>` : '')}
+                <div class="text-small mt-2"><strong style="font-size:16px;color:var(--rose);">${window.ui.fmtSoles(r.total)}</strong> · hace ${min<60?min+' min':(Math.floor(min/60)+'h '+(min%60)+'m')}</div>
               </div>
-              <div class="flex gap-2">
+              <div class="flex gap-2" style="flex-wrap:wrap;">
                 <input type="file" id="v_${r.id}" accept="image/*,application/pdf" style="display:none;"/>
-                <button class="btn secondary" onclick="document.getElementById('v_${r.id}').click()"><span class="material-symbols-outlined">upload</span>Voucher</button>
-                <button class="btn success" onclick="confirmar('${r.id}', '${window.ui.esc(r.metodo_pago)}')"><span class="material-symbols-outlined">check</span>Confirmar</button>
-                <a class="btn ghost" href="${window.ui.whatsappUrl(r.cliente_telefono, 'Hola! Recordatorio: falta el voucher del pedido ' + r.pedido_codigo + ' (S/. ' + r.total.toFixed(2) + ')')}" target="_blank"><span class="material-symbols-outlined">chat</span></a>
+                <button class="btn secondary sm" onclick="document.getElementById('v_${r.id}').click()"><span class="material-symbols-outlined">upload</span>Voucher</button>
+                <button class="btn success sm" onclick="confirmar('${r.id}')"><span class="material-symbols-outlined">check</span>Confirmar</button>
+                <a class="btn ghost sm" href="${window.ui.whatsappUrl(r.cliente_telefono, 'Hola! Recordatorio: falta el voucher del pedido ' + r.pedido_codigo + ' (S/. ' + r.total.toFixed(2) + ') 🙏')}" target="_blank" title="Pedir voucher"><span class="material-symbols-outlined">notifications</span></a>
               </div>
             </div>
           </div>`;
         }).join('');
-        // Cachear archivo por id de pedido
+        // Cache datos + files por id (needed para el flujo confirmar → comprobante)
+        window._pedidos = {}; rows.forEach(r => window._pedidos[r.id] = r);
         rows.forEach(r => {
           const inp = document.getElementById('v_' + r.id);
-          if (inp) inp.addEventListener('change', e => { window._voucherFile = window._voucherFile || {}; window._voucherFile[r.id] = e.target.files[0]; window.ui.toast('Voucher listo para ' + r.pedido_codigo); });
+          if (inp) inp.addEventListener('change', e => {
+            window._voucherFile = window._voucherFile || {};
+            window._voucherFile[r.id] = e.target.files[0];
+            window.ui.toast('Voucher listo para ' + r.pedido_codigo);
+          });
         });
       } catch (e) { list.innerHTML = '<div class="card" style="text-align:center;padding:30px;color:var(--danger);">Error: ' + window.ui.esc(e.message) + '</div>'; }
     }
-    window.confirmar = async (pid, met) => {
+
+    // Genera el texto del comprobante que se manda al cliente
+    function comprobanteMsg(p) {
+      const esFactura = p.tipo_comprobante === 'factura';
+      const items = ''; // se rellena aparte con las líneas si hace falta
+      const lineas = [
+        `Hola ${p.cliente_nombre || ''}! 🌸`,
+        `Confirmamos tu pago del pedido *${p.pedido_codigo}*`,
+        ``,
+        `📋 *Datos del comprobante*`,
+        esFactura
+          ? `Factura a: ${p.razon_social || '—'}\nRUC: ${p.documento || '—'}\n${p.direccion_fiscal ? 'Dirección: '+p.direccion_fiscal : ''}`
+          : `Boleta a nombre de: ${p.cliente_nombre || '—'}${p.documento ? '\nDNI: '+p.documento : ''}`,
+        ``,
+        `💰 Subtotal: S/. ${(p.subtotal||0).toFixed(2)}`,
+        `🚚 Envío: S/. ${(p.costo_envio||0).toFixed(2)}`,
+        `*Total pagado: S/. ${(p.total||0).toFixed(2)}*`,
+        ``,
+        `📎 En las próximas horas te envío ${esFactura ? 'la factura formal' : 'la boleta electrónica'} en PDF.`,
+        ``,
+        `¡Gracias por confiar en Veliroz! 💐`
+      ];
+      return lineas.filter(l => l !== null).join('\n');
+    }
+
+    // Abre el modal de comprobante con mensaje pre-armado
+    function abrirComprobante(p) {
+      document.getElementById('compHeader').textContent = (p.tipo_comprobante === 'factura' ? 'FACTURA' : 'BOLETA') + ' · ' + p.pedido_codigo;
+      document.getElementById('compTitulo').textContent = 'Enviar comprobante a ' + (p.cliente_nombre || 'cliente');
+      const msg = comprobanteMsg(p);
+      document.getElementById('compMsg').value = msg;
+      const updateHref = () => {
+        document.getElementById('compBtnWa').href = window.ui.whatsappUrl(p.cliente_telefono, document.getElementById('compMsg').value);
+      };
+      updateHref();
+      document.getElementById('compMsg').oninput = updateHref;
+      window.ui.openModal('compModal');
+    }
+
+    window.confirmar = async (pid) => {
+      const p = window._pedidos[pid];
+      if (!p) return;
+      const met = p.metodo_pago;
       let path = null;
       const f = (window._voucherFile || {})[pid];
-      if ((met === 'yape' || met === 'plin' || met === 'banco') && !f) { window.ui.toast('Subí el voucher primero', 'danger'); return; }
+      if ((met === 'yape' || met === 'plin' || met === 'banco') && !f) {
+        window.ui.toast('Subí el voucher primero (botón Voucher)', 'danger'); return;
+      }
       if (f) {
         path = 'pagos/' + pid + '/' + Date.now() + '-' + f.name.replace(/[^a-zA-Z0-9.-]/g,'_');
         try { await window.sb.upload(window.VELIROZ_CRM.bucket, path, f); }
         catch (e) { window.ui.toast('Error subiendo voucher: ' + e.message, 'danger'); return; }
       }
-      try { await window.sb.rpc('confirmar_pago', { p_pedido_id: pid, p_metodo: met, p_evidencia_path: path }); window.ui.toast('Pago confirmado', 'success'); load(); }
-      catch (e) { window.ui.toast('Error: ' + e.message, 'danger'); }
+      try {
+        await window.sb.rpc('confirmar_pago', { p_pedido_id: pid, p_metodo: met, p_evidencia_path: path });
+        window.ui.toast('Pago confirmado ✓', 'success');
+        // Auto-abrir modal de comprobante
+        setTimeout(() => abrirComprobante(p), 400);
+        // Reload en background para que salga de la lista
+        setTimeout(load, 1500);
+      } catch (e) { window.ui.toast('Error: ' + e.message, 'danger'); }
     };
+
     document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => {
       document.querySelectorAll('.tab-btn').forEach(x => x.classList.remove('active'));
       b.classList.add('active'); metodo = b.dataset.metodo; load();

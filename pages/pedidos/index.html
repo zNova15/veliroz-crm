@@ -137,6 +137,7 @@ window.shell.render({
     }
     function renderAcciones(p, who) {
       const estados = ['nuevo','pagado','preparando','en_reparto','entregado','cancelado'];
+      const compType = p.tipo_comprobante === 'factura' ? '📄 Factura' : '🧾 Boleta';
       return `<div class="mt-4" style="border-top:1px solid var(--border-2);padding-top:16px;">
         <label>Cambiar estado</label>
         <div class="flex gap-2 mt-2">
@@ -150,6 +151,12 @@ window.shell.render({
             <button class="btn success sm" id="btnPago">Confirmar pago</button>
           </div>
           <div class="text-muted text-small mt-2">Yape/Plin/Banco requieren voucher.</div>
+        </div>
+        <div class="mt-4">
+          <label>Enviar comprobante al cliente (${compType})</label>
+          <div class="flex gap-2 mt-2">
+            <button class="btn secondary sm" id="btnComprobante"><span class="material-symbols-outlined">receipt_long</span>Preparar mensaje</button>
+          </div>
         </div>
       </div>`;
     }
@@ -171,9 +178,62 @@ window.shell.render({
         }
         try {
           await window.sb.rpc('confirmar_pago', { p_pedido_id: p.id, p_metodo: p.metodo_pago, p_evidencia_path: path });
-          window.ui.toast('Pago confirmado', 'success'); window.ui.closeModal('detModal'); load();
+          window.ui.toast('Pago confirmado', 'success');
+          // Auto-abrir modal de comprobante después de confirmar
+          setTimeout(() => abrirComprobante(p), 400);
         } catch (e) { window.ui.toast('Error: ' + e.message, 'danger'); }
       });
+      const btnC = document.getElementById('btnComprobante');
+      if (btnC) btnC.addEventListener('click', () => abrirComprobante(p));
+    }
+
+    function comprobanteMsg(p) {
+      const esFactura = p.tipo_comprobante === 'factura';
+      const partes = [
+        `Hola ${p.cliente_nombre || ''}! 🌸`,
+        `Confirmamos tu pago del pedido *${p.pedido_codigo}*`,
+        ``,
+        `📋 *Datos del comprobante*`,
+        esFactura
+          ? `Factura a: ${p.razon_social || '—'}\nRUC: ${p.documento || '—'}${p.direccion_fiscal ? '\nDirección: '+p.direccion_fiscal : ''}`
+          : `Boleta a nombre de: ${p.cliente_nombre || '—'}${p.documento ? '\nDNI: '+p.documento : ''}`,
+        ``,
+        `💰 Subtotal: S/. ${(p.subtotal||0).toFixed(2)}`,
+        `🚚 Envío: S/. ${(p.costo_envio||0).toFixed(2)}`,
+        `*Total pagado: S/. ${(p.total||0).toFixed(2)}*`,
+        ``,
+        `📎 En las próximas horas te envío ${esFactura ? 'la factura formal' : 'la boleta electrónica'} en PDF.`,
+        ``,
+        `¡Gracias por confiar en Veliroz! 💐`
+      ];
+      return partes.join('\n');
+    }
+
+    function abrirComprobante(p) {
+      // Reutilizar modal detalle: convertirlo temporalmente en editor de mensaje
+      const body = document.getElementById('detBody');
+      const esFactura = p.tipo_comprobante === 'factura';
+      const compType = esFactura ? '📄 Factura' : '🧾 Boleta';
+      document.getElementById('detCod').textContent = 'Comprobante · ' + p.pedido_codigo;
+      body.innerHTML = `
+        <div class="mb-3 text-small text-muted">Tipo: <strong>${compType}</strong> · Para: <strong>${window.ui.esc(p.cliente_nombre||'')}</strong> · Tel: <strong>${window.ui.esc(p.cliente_telefono||'—')}</strong></div>
+        <label>Mensaje para WhatsApp (editable)</label>
+        <textarea id="compMsgP" rows="14" style="width:100%;font-family:inherit;font-size:13px;line-height:1.5;margin-top:6px;"></textarea>
+        <div class="mt-4 flex gap-2">
+          <a class="btn" id="btnWaComp" target="_blank" style="flex:1;justify-content:center;">
+            <span class="material-symbols-outlined">chat</span> Enviar por WhatsApp
+          </a>
+          <button class="btn ghost" onclick="load(); window.ui.closeModal('detModal');">Cerrar</button>
+        </div>
+        <p class="text-small text-muted mt-3">💡 Cuando emitas la boleta/factura formal en SUNAT, adjuntá el PDF por el mismo chat.</p>
+      `;
+      const ta = document.getElementById('compMsgP');
+      const link = document.getElementById('btnWaComp');
+      ta.value = comprobanteMsg(p);
+      const refresh = () => { link.href = window.ui.whatsappUrl(p.cliente_telefono, ta.value); };
+      refresh();
+      ta.oninput = refresh;
+      window.ui.openModal('detModal');
     }
     document.getElementById('q').addEventListener('input', window.ui.debounce(e => { filtroQ = e.target.value.trim(); load(); }, 400));
     document.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => {
